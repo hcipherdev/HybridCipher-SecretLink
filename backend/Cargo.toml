@@ -1,0 +1,35 @@
+[package]
+name = "hybridcipher-secretlink-server"
+version = "0.1.0"
+edition = "2021"
+description = "HybridCipher SecretLink lightweight secret-sharing service"
+license = "MIT OR Apache-2.0"
+
+[workspace]
+
+[[bin]]
+name = "hybridcipher-secretlink-server"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+axum = { version = "0.7", features = ["query"] }
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"
+httpdate = "1.0"
+mime_guess = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
+thiserror = "1.0"
+tokio = { version = "1.0", features = ["full", "signal", "sync"] }
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.5", features = ["trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tempfile = "3.8"
