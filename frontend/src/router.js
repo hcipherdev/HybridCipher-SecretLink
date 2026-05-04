@@ -339,6 +339,7 @@ function renderCreateView(root, location, currentPath) {
     });
 
     root.querySelectorAll('[data-copy-target]').forEach((button) => {
+        const originalLabel = button.textContent;
         button.addEventListener('click', async () => {
             const target = root.querySelector(`#${button.getAttribute('data-copy-target')}`);
             if (!target?.value) {
@@ -346,7 +347,13 @@ function renderCreateView(root, location, currentPath) {
             }
             try {
                 await navigator.clipboard.writeText(target.value);
+                button.textContent = 'Copied!';
+                button.classList.add('is-copied');
                 setStatus(statusLine, 'Copied to clipboard.', 'success');
+                setTimeout(() => {
+                    button.textContent = originalLabel;
+                    button.classList.remove('is-copied');
+                }, 1200);
             } catch (error) {
                 setStatus(statusLine, 'Could not access the clipboard in this browser.', 'error');
             }
@@ -467,6 +474,7 @@ function renderManageView(root, location, currentPath) {
             const data = await getShareStatus(shareId, adminToken);
             statusCard.hidden = false;
             statePill.textContent = data.status;
+            statePill.dataset.status = data.status;
             expiresAt.textContent = formatDateTime(data.expires_at);
             oneTime.textContent = data.one_time ? 'Yes' : 'No';
             updatedAt.textContent = formatDateTime(data.updated_at);

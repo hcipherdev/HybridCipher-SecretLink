@@ -297,6 +297,7 @@ pub async fn build_app(config: SecretLinkConfig) -> anyhow::Result<Router> {
         .route("/src/crypto.js", get(serve_asset))
         .route("/src/router.js", get(serve_asset))
         .route("/styles.css", get(serve_asset))
+        .route("/favicon.svg", get(serve_asset))
         .layer(ServiceBuilder::new().layer(TraceLayer::new_for_http()))
         .layer(from_fn(security_headers_middleware))
         .with_state(state);
@@ -560,7 +561,7 @@ fn apply_response_headers(headers: &mut axum::http::HeaderMap) {
     headers.insert(
         header::HeaderName::from_static("content-security-policy"),
         HeaderValue::from_static(
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
         ),
     );
     headers.insert(

@@ -1,5 +1,11 @@
 # HybridCipher SecretLink
 
+[![Live](https://img.shields.io/badge/Live-secretlink.hybridcipher.com-1d5c63)](https://secretlink.hybridcipher.com)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/Backend-Rust%20%2B%20Axum-orange)](backend/)
+
+> **[Try SecretLink →](https://secretlink.hybridcipher.com)**
+
 Share sensitive text, credentials, and configuration fragments without dropping
 plaintext into chat, email, or ticket systems.
 
@@ -17,6 +23,17 @@ secrets while keeping the trust boundary explicit.
   footprint
 
 ## How It Works
+
+```
+  ┌──────────┐    encrypted     ┌──────────┐    recipient link
+  │  Sender  │ ──────────────▶  │  Server  │ ──────────────────▶  Recipient
+  │ (browser)│   (ciphertext)   │ (Rust +  │   (key in #fragment)
+  │          │                  │  SQLite) │
+  └──────────┘                  └──────────┘
+       │                              │
+       └── management link ───────────┘
+           (revoke / status)
+```
 
 1. The sender enters a secret in the browser.
 2. SecretLink encrypts that plaintext locally before it is sent to the server.
@@ -62,10 +79,13 @@ public-key cryptography for payload confidentiality.
 
 ## Technical Snapshot
 
-- Frontend: plain JavaScript browser application
-- Backend: Rust, Axum, SQLite
-- Share controls: one-time retrieval, explicit reveal flow, revocation, expiry
-- Public surfaces: create, reveal, manage, explainer, privacy, and terms pages
+| Layer      | Stack                                                   |
+|------------|---------------------------------------------------------|
+| Frontend   | Plain JavaScript, WebCrypto API, no build step          |
+| Backend    | Rust, Axum, SQLite (WAL mode)                           |
+| Encryption | AES-256-GCM, 32-byte key, per-share random nonce        |
+| Controls   | One-time retrieval, explicit reveal, revocation, expiry  |
+| Pages      | Create, reveal, manage, how-it-works, privacy, terms    |
 
 ## Repository Layout
 
@@ -96,7 +116,10 @@ Useful environment variables:
 ## Test
 
 ```bash
+# Backend
 cargo test --manifest-path backend/Cargo.toml
+
+# Frontend
 cd frontend && node --test tests/*.test.js
 ```
 
@@ -123,6 +146,17 @@ SecretLink is well suited for:
 
 - [Backend notes](backend/README.md)
 - [Frontend notes](frontend/README.md)
+
+## Contributing
+
+SecretLink is developed in a private repository. This public repo receives
+synced snapshots of the publishable product surface. Bug reports and feature
+requests are welcome via
+[GitHub Issues](https://github.com/hcipherdev/HybridCipher-SecretLink/issues).
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting guidance.
 
 ## License
 

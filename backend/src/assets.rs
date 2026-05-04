@@ -31,7 +31,7 @@ impl AssetCatalog {
     pub async fn read(&self, name: &str) -> Result<Option<Asset>, AppError> {
         if !matches!(
             name,
-            "src/app.js" | "src/api.js" | "src/crypto.js" | "src/router.js" | "styles.css"
+            "src/app.js" | "src/api.js" | "src/crypto.js" | "src/router.js" | "styles.css" | "favicon.svg"
         ) {
             return Ok(None);
         }
@@ -87,6 +87,9 @@ fn embedded_asset(name: &str) -> Option<Asset> {
             .as_bytes()
             .to_vec(),
         "styles.css" => include_str!("../../frontend/public/styles.css")
+            .as_bytes()
+            .to_vec(),
+        "favicon.svg" => include_str!("../../frontend/public/favicon.svg")
             .as_bytes()
             .to_vec(),
         _ => return None,
