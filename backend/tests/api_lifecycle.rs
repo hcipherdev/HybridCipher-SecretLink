@@ -45,6 +45,13 @@ async fn json_response(response: axum::response::Response) -> Value {
     serde_json::from_slice(&body).expect("json response")
 }
 
+async fn text_response(response: axum::response::Response) -> String {
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("response bytes");
+    String::from_utf8(body.to_vec()).expect("utf8 response")
+}
+
 #[tokio::test]
 async fn create_share_and_status_flow_starts_available() {
     let (_tempdir, app) = spawn_app(Duration::from_secs(60)).await;
@@ -261,6 +268,158 @@ async fn revoke_invalidates_active_claim() {
     assert_eq!(consume_response.status(), StatusCode::NOT_FOUND);
     let consume_json = json_response(consume_response).await;
     assert_eq!(consume_json["error"], "share_unavailable");
+}
+
+#[tokio::test]
+async fn robots_txt_disallows_api_and_secret_routes_and_points_to_sitemap() {
+    let (_tempdir, app) = spawn_app(Duration::from_secs(60)).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/robots.txt")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok()),
+        Some("text/plain; charset=utf-8")
+    );
+    let text = text_response(response).await;
+    assert!(text.contains("User-agent: *"));
+    assert!(text.contains("Disallow: /api/"));
+    assert!(text.contains("Disallow: /s/"));
+    assert!(text.contains("Disallow: /manage/"));
+    assert!(text.contains("Sitemap: https://secretlink.hybridcipher.com/sitemap.xml"));
+}
+
+#[tokio::test]
+async fn sitemap_xml_lists_only_public_marketing_routes() {
+    let (_tempdir, app) = spawn_app(Duration::from_secs(60)).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/sitemap.xml")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok()),
+        Some("application/xml")
+    );
+    let text = text_response(response).await;
+    assert_eq!(text.matches("<url>").count(), 4);
+    assert!(text.contains("<loc>https://secretlink.hybridcipher.com/</loc>"));
+    assert!(text.contains("<loc>https://secretlink.hybridcipher.com/how-it-works</loc>"));
+    assert!(text.contains("<loc>https://secretlink.hybridcipher.com/privacy</loc>"));
+    assert!(text.contains("<loc>https://secretlink.hybridcipher.com/terms</loc>"));
+    assert!(!text.contains("/s/"));
+    assert!(!text.contains("/manage/"));
+}
+
+#[tokio::test]
+async fn public_pages_include_canonical_meta_without_noindex() {
+    let (_tempdir, app) = spawn_app(Duration::from_secs(60)).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/how-it-works")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let text = text_response(response).await;
+    assert!(text.contains(
+        r#"<link rel="canonical" href="https://secretlink.hybridcipher.com/how-it-works">"#
+    ));
+    assert!(text.contains(r#"<meta name="description" content=""#));
+    assert!(!text.contains(r#"<meta name="robots" content="noindex, nofollow">"#));
+}
+
+#[tokio::test]
+async fn secret_html_routes_include_noindex_meta() {
+    let (_tempdir, app) = spawn_app(Duration::from_secs(60)).await;
+    let share_id = Uuid::new_v4();
+
+    for route in [format!("/s/{share_id}"), format!("/manage/{share_id}")] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(&route)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK, "route {route}");
+        let text = text_response(response).await;
+        assert!(text.contains(r#"<meta name="robots" content="noindex, nofollow">"#));
+    }
+}
+
+#[tokio::test]
+async fn api_responses_send_x_robots_tag_noindex() {
+    let (_tempdir, app) = spawn_app(Duration::from_secs(60)).await;
+    let share_id = Uuid::new_v4();
+    let admin_token = "admin-token-seo";
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/shares")
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    build_create_request(share_id, hash_token(admin_token), true).to_string(),
+                ))
+                .expect("create request"),
+        )
+        .await
+        .expect("create response");
+    assert_eq!(create_response.status(), StatusCode::CREATED);
+    assert_eq!(
+        create_response.headers().get("x-robots-tag").and_then(|value| value.to_str().ok()),
+        Some("noindex, nofollow")
+    );
+
+    let status_response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/shares/{share_id}/status"))
+                .method("GET")
+                .header("x-secretlink-admin-token", admin_token)
+                .body(Body::empty())
+                .expect("status request"),
+        )
+        .await
+        .expect("status response");
+    assert_eq!(status_response.status(), StatusCode::OK);
+    assert_eq!(
+        status_response.headers().get("x-robots-tag").and_then(|value| value.to_str().ok()),
+        Some("noindex, nofollow")
+    );
 }
 
 #[tokio::test]

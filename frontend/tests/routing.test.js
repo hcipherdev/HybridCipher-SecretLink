@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import * as routerModule from '../src/router.js';
 import * as cryptoModule from '../src/crypto.js';
@@ -70,8 +71,10 @@ test('legal pages expose the public-launch privacy and terms content', () => {
     assert.equal(privacyPage.title, 'Privacy');
     assert.match(privacyText, /encrypted secrets/i);
     assert.match(privacyText, /IP address/i);
+    assert.match(privacyText, /Google Analytics/i);
     assert.match(privacyText, /no user accounts/i);
     assert.match(privacyText, /support@hybridcipher\.com/i);
+    assert.doesNotMatch(privacyText, /no third-party analytics or ad trackers/i);
     assert.doesNotMatch(privacyText, /replace these addresses/i);
     assert.doesNotMatch(privacyText, /launch/i);
     assert.doesNotMatch(privacyText, /deployment/i);
@@ -88,6 +91,14 @@ test('legal pages expose the public-launch privacy and terms content', () => {
     assert.doesNotMatch(termsText, /replace this address/i);
     assert.doesNotMatch(termsText, /launch/i);
     assert.doesNotMatch(termsText, /rate-limited/i);
+});
+
+test('public HTML installs the configured Google tag and avoids stale no-tracker metadata', () => {
+    const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+
+    assert.match(html, /https:\/\/www\.googletagmanager\.com\/gtag\/js\?id=G-JB26CTX23Z/);
+    assert.match(html, /gtag\('config', 'G-JB26CTX23Z'\)/);
+    assert.doesNotMatch(html, /No accounts, no trackers\./);
 });
 
 test('generated admin token can be hashed for the server request body', async () => {

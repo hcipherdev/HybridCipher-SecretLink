@@ -15,6 +15,8 @@ async fn main() -> anyhow::Result<()> {
             .unwrap_or_else(|_| "sqlite://secretlink.db".to_string()),
         bind_addr: std::env::var("SECRETLINK_BIND_ADDR")
             .unwrap_or_else(|_| "127.0.0.1:8787".to_string()),
+        public_base_url: std::env::var("SECRETLINK_PUBLIC_BASE_URL")
+            .unwrap_or_else(|_| "https://secretlink.hybridcipher.com".to_string()),
         web_dev_dir: std::env::var("SECRETLINK_WEB_DEV_DIR").ok().map(Into::into),
         claim_lease: std::time::Duration::from_secs(60),
         cleanup_interval: std::time::Duration::from_secs(30),

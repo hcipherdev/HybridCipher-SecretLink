@@ -30,6 +30,7 @@ use uuid::Uuid;
 pub struct SecretLinkConfig {
     pub database_url: String,
     pub bind_addr: String,
+    pub public_base_url: String,
     pub web_dev_dir: Option<PathBuf>,
     pub claim_lease: Duration,
     pub cleanup_interval: Duration,
@@ -41,6 +42,7 @@ impl SecretLinkConfig {
         Self {
             database_url: database_url.into(),
             bind_addr: "127.0.0.1:0".to_string(),
+            public_base_url: "https://secretlink.hybridcipher.com".to_string(),
             web_dev_dir: None,
             claim_lease: Duration::from_secs(60),
             cleanup_interval: Duration::from_secs(30),
@@ -164,7 +166,49 @@ struct AppState {
     store: Store,
     assets: assets::AssetCatalog,
     limiter: Arc<rate_limit::RateLimiter>,
+    site: SiteUrls,
 }
+
+#[derive(Clone)]
+struct SiteUrls {
+    base_url: String,
+}
+
+impl SiteUrls {
+    fn new(base_url: &str) -> Result<Self, AppError> {
+        let trimmed = base_url.trim();
+        if trimmed.is_empty() {
+            return Err(AppError::internal("blank public base URL"));
+        }
+
+        let parsed = axum::http::Uri::try_from(trimmed)
+            .map_err(|_| AppError::internal("invalid public base URL"))?;
+        if parsed.scheme_str().is_none() || parsed.authority().is_none() {
+            return Err(AppError::internal("invalid public base URL"));
+        }
+        let path = parsed.path();
+        if !path.is_empty() && path != "/" {
+            return Err(AppError::internal("invalid public base URL"));
+        }
+        if parsed.query().is_some() {
+            return Err(AppError::internal("invalid public base URL"));
+        }
+
+        Ok(Self {
+            base_url: trimmed.trim_end_matches('/').to_string(),
+        })
+    }
+
+    fn absolute_url(&self, path: &str) -> String {
+        if path == "/" {
+            format!("{}/", self.base_url)
+        } else {
+            format!("{}{}", self.base_url, path)
+        }
+    }
+}
+
+const NOINDEX_VALUE: &str = "noindex, nofollow";
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
@@ -268,10 +312,12 @@ pub async fn build_app(config: SecretLinkConfig) -> anyhow::Result<Router> {
 
     let assets = assets::AssetCatalog::new(config.web_dev_dir.clone());
     let limiter = rate_limit::RateLimiter::default();
+    let site = SiteUrls::new(&config.public_base_url)?;
     let state = Arc::new(AppState {
         store,
         assets,
         limiter: Arc::new(limiter),
+        site,
     });
 
     spawn_cleanup_task(state.clone(), config.cleanup_interval);
@@ -292,6 +338,8 @@ pub async fn build_app(config: SecretLinkConfig) -> anyhow::Result<Router> {
         .route("/terms", get(render_index))
         .route("/s/:id", get(render_index))
         .route("/manage/:id", get(render_index))
+        .route("/robots.txt", get(robots_txt))
+        .route("/sitemap.xml", get(sitemap_xml))
         .route("/src/app.js", get(serve_asset))
         .route("/src/api.js", get(serve_asset))
         .route("/src/crypto.js", get(serve_asset))
@@ -446,9 +494,18 @@ async fn share_status(
     Ok(Json(ShareStatusResponse::from(share)))
 }
 
-async fn render_index(State(state): State<Arc<AppState>>) -> Result<Html<String>, AppError> {
+async fn render_index(
+    State(state): State<Arc<AppState>>,
+    request: Request,
+) -> Result<Html<String>, AppError> {
     let html = state.assets.index_html().await?;
-    Ok(Html(html))
+    let path = request.uri().path();
+    let canonical = state.site.absolute_url(path);
+    let rendered = html
+        .replace("{{CANONICAL_URL}}", &canonical)
+        .replace("{{OG_URL}}", &canonical)
+        .replace("{{ROBOTS_META}}", robots_meta_tag(path));
+    Ok(Html(rendered))
 }
 
 async fn serve_asset(
@@ -467,9 +524,59 @@ async fn serve_asset(
     Ok(response)
 }
 
+async fn robots_txt(State(state): State<Arc<AppState>>) -> Response {
+    let body = format!(
+        "User-agent: *\nDisallow: /api/\nDisallow: /s/\nDisallow: /manage/\n\nSitemap: {}\n",
+        state.site.absolute_url("/sitemap.xml")
+    );
+    (
+        [(header::CONTENT_TYPE, HeaderValue::from_static("text/plain; charset=utf-8"))],
+        body,
+    )
+        .into_response()
+}
+
+async fn sitemap_xml(State(state): State<Arc<AppState>>) -> Response {
+    struct UrlMeta {
+        path: &'static str,
+        changefreq: &'static str,
+        priority: &'static str,
+    }
+    let entries = [
+        UrlMeta { path: "/",             changefreq: "weekly",  priority: "1.0" },
+        UrlMeta { path: "/how-it-works", changefreq: "monthly", priority: "0.8" },
+        UrlMeta { path: "/privacy",      changefreq: "monthly", priority: "0.4" },
+        UrlMeta { path: "/terms",        changefreq: "monthly", priority: "0.4" },
+    ];
+    let urls = entries
+        .iter()
+        .map(|e| format!(
+            "  <url><loc>{}</loc><changefreq>{}</changefreq><priority>{}</priority></url>",
+            state.site.absolute_url(e.path), e.changefreq, e.priority
+        ))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let body = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n{}\n</urlset>",
+        urls
+    );
+    (
+        [(header::CONTENT_TYPE, HeaderValue::from_static("application/xml"))],
+        body,
+    )
+        .into_response()
+}
+
 async fn security_headers_middleware(request: Request, next: Next) -> Response {
+    let path = request.uri().path().to_string();
     let mut response = next.run(request).await;
     apply_response_headers(response.headers_mut());
+    if path.starts_with("/api/") {
+        response.headers_mut().insert(
+            header::HeaderName::from_static("x-robots-tag"),
+            HeaderValue::from_static(NOINDEX_VALUE),
+        );
+    }
     response
 }
 
@@ -570,6 +677,14 @@ fn apply_response_headers(headers: &mut axum::http::HeaderMap) {
             "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()",
         ),
     );
+}
+
+fn robots_meta_tag(path: &str) -> &'static str {
+    if path.starts_with("/s/") || path.starts_with("/manage/") {
+        r#"<meta name="robots" content="noindex, nofollow">"#
+    } else {
+        ""
+    }
 }
 
 impl From<StoredShare> for ShareStatusResponse {

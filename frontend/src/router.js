@@ -73,20 +73,21 @@ const HOW_IT_WORKS_PAGE = {
 const LEGAL_PAGES = {
     privacy: {
         title: 'Privacy',
-        lede: 'SecretLink is a lightweight encrypted secret-sharing service. The service is designed to work without user accounts, marketing trackers, or ad tech.',
+        lede: 'SecretLink is a lightweight encrypted secret-sharing service. The service is designed to work without user accounts or advertising technology, while using limited analytics to understand site usage.',
         sections: [
             {
                 heading: 'What the service handles',
                 items: [
                     'The service stores encrypted secrets, share IDs, management-link verification data, timestamps, and basic share status details needed to create, reveal, revoke, and expire shares.',
                     'SecretLink and the companies that help run it may also receive standard service information such as IP address, time of request, browser details, and error information to keep the service running and protect it from abuse.',
+                    'SecretLink also uses Google Analytics to measure site traffic and general product usage patterns so the service can be improved.',
                 ],
             },
             {
-                heading: 'What the service does not do',
+                heading: 'Analytics and tracking',
                 items: [
-                    'SecretLink has no user accounts, no saved profiles, no marketing emails, no payment collection, and no third-party analytics or ad trackers in the product UI.',
-                    'SecretLink does not use cookies in the application flow.',
+                    'SecretLink has no user accounts, no saved profiles, no marketing emails, no payment collection, and no advertising trackers in the product UI.',
+                    'Google Analytics may collect information such as pages viewed, approximate location derived from IP address, device or browser details, and interactions with the site. Google may use cookies or similar technologies for these analytics functions.',
                 ],
             },
             {
@@ -194,24 +195,29 @@ export function getHowItWorksPage() {
 export function renderRoute(root, location) {
     const kind = routeKindFromPath(location.pathname);
     const currentPath = normalizePath(location.pathname);
-    setDocumentTitle(APP_TITLE);
 
     if (kind === 'how-it-works') {
+        setDocumentTitle(`How It Works — ${APP_NAME}`);
         renderHowItWorksView(root, currentPath);
         return;
     }
     if (kind === 'privacy' || kind === 'terms') {
+        const pageTitle = kind === 'privacy' ? 'Privacy' : 'Terms';
+        setDocumentTitle(`${pageTitle} — ${APP_NAME}`);
         renderLegalView(root, kind, currentPath);
         return;
     }
     if (kind === 'manage') {
+        setDocumentTitle(APP_TITLE);
         renderManageView(root, location, currentPath);
         return;
     }
     if (kind === 'reveal') {
+        setDocumentTitle(APP_TITLE);
         renderRevealView(root, location, currentPath);
         return;
     }
+    setDocumentTitle(APP_TITLE);
     renderCreateView(root, location, currentPath);
 }
 
@@ -565,7 +571,7 @@ function renderPageShell({ currentPath, title, lede, trustBand = '', content }) 
                     </div>
                     ${content}
                     <footer class="site-footer">
-                        <span class="footer-brand">${APP_TITLE}</span>
+                        <span class="footer-brand">SecretLink by <a href="https://www.hybridcipher.com">HybridCipher</a></span>
                         <nav class="footer-nav" aria-label="Legal">
                             <a href="/privacy">Privacy</a>
                             <a href="/terms">Terms</a>
